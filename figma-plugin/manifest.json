@@ -1,0 +1,14 @@
+{
+  "name": "KD Vantage Link",
+  "id": "kd-vantage-link-local",
+  "api": "1.0.0",
+  "main": "code.js",
+  "ui": "ui.html",
+  "editorType": ["figma"],
+  "documentAccess": "dynamic-page",
+  "networkAccess": {
+    "allowedDomains": ["none"],
+    "devAllowedDomains": ["http://localhost:8590", "http://localhost:8591", "http://localhost:8592"],
+    "reasoning": "Sends exported frames to the KD Vantage app running on this computer."
+  }
+}

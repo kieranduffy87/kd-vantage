@@ -1,0 +1,80 @@
+<style>
+  :root { color-scheme: light dark; }
+  body { font: 12px/1.4 Inter, -apple-system, system-ui, sans-serif; margin: 0; padding: 14px; color: var(--figma-color-text, #111); background: var(--figma-color-bg, #fff); }
+  h1 { font-size: 13px; margin: 0 0 2px; display: flex; align-items: center; gap: 8px; }
+  h1 svg { width: 18px; height: 12px; }
+  p { margin: 0 0 12px; color: var(--figma-color-text-secondary, #666); }
+  .box { border: 1px solid var(--figma-color-border, #e5e5e5); border-radius: 8px; padding: 8px 10px; margin-bottom: 10px; min-height: 18px; max-height: 92px; overflow: auto; }
+  .row { display: flex; justify-content: space-between; gap: 8px; padding: 2px 0; }
+  .row span:last-child { color: var(--figma-color-text-secondary, #888); white-space: nowrap; }
+  label.tg { display: flex; align-items: center; justify-content: space-between; margin: 10px 0; }
+  button { font: inherit; border: 0; border-radius: 6px; padding: 9px 12px; width: 100%; cursor: pointer; font-weight: 600; }
+  #send { background: #0339f8; color: #fff; }
+  #send:disabled { opacity: 0.4; cursor: default; }
+  #unlink { background: none; color: var(--figma-color-text-secondary, #666); margin-top: 6px; font-weight: 500; }
+  .status { margin-top: 10px; font-size: 11px; color: var(--figma-color-text-secondary, #888); display: flex; gap: 6px; align-items: center; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: #aaa; }
+  .dot.on { background: #21d4b4; } .dot.err { background: #e5484d; }
+  .port { display: flex; align-items: center; gap: 6px; }
+  .port input { width: 56px; font: inherit; padding: 3px 5px; border: 1px solid var(--figma-color-border, #ddd); border-radius: 4px; background: none; color: inherit; }
+  .sub { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--figma-color-text-secondary, #888); margin: 0 0 4px; }
+</style>
+<h1><svg viewBox="0 0 18.62 11.73"><polygon fill="#0339f8" points="18.62 0 12 0 6 5.86 12 11.73 18.62 11.73 12.62 5.86 18.62 0"/><polygon fill="currentColor" points="0 0 0 11.72 6 5.86 0 0"/></svg>KD Vantage Link</h1>
+<p>Select a device in Vantage, then send frames here. They land on its screen.</p>
+<div class="sub">Selected</div>
+<div class="box" id="sel">Nothing selected</div>
+<button id="send" disabled>Send to Vantage</button>
+<label class="tg"><span><b>Live</b> — update as I design</span><input type="checkbox" id="live"></label>
+<div class="sub">Linked</div>
+<div class="box" id="linked">None yet</div>
+<button id="unlink">Unlink all</button>
+<div class="status"><i class="dot" id="dot"></i><span id="msg">Looking for Vantage…</span>
+  <span class="port" style="margin-left:auto">port <input id="port" value="8590"></span></div>
+<script>
+  const $ = (id) => document.getElementById(id);
+  const base = () => `http://localhost:${$('port').value.trim() || 8590}`;
+  const esc = (s) => s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+  let ok = false;
+
+  async function ping() {
+    try {
+      const r = await fetch(base() + '/api/ping');
+      ok = r.ok;
+    } catch (e) { ok = false; }
+    $('dot').className = 'dot ' + (ok ? 'on' : 'err');
+    $('msg').textContent = ok ? 'Connected to Vantage' : 'Vantage is not running';
+  }
+  setInterval(ping, 3000); ping();
+
+  onmessage = async (ev) => {
+    const m = ev.data.pluginMessage;
+    if (!m) return;
+    if (m.type === 'selection') {
+      $('sel').innerHTML = m.items.length ? m.items.map((i) => `<div class="row"><span>${esc(i.name)}</span><span>${i.w}×${i.h}</span></div>`).join('') : 'Nothing selected';
+      $('send').disabled = !m.items.length;
+    }
+    if (m.type === 'linked') {
+      $('linked').innerHTML = m.items.length ? m.items.map((i) => `<div class="row"><span>${esc(i.name)}</span><span>linked</span></div>`).join('') : 'None yet';
+    }
+    if (m.type === 'push') {
+      try {
+        const r = await fetch(base() + '/api/push', {
+          method: 'POST',
+          headers: { 'Content-Type': 'image/png', 'X-Frame-Id': m.id, 'X-Frame-Name': encodeURIComponent(m.name) },
+          body: m.bytes,
+        });
+        if (!r.ok) throw new Error(r.status);
+        $('msg').textContent = `Sent “${m.name}” · ${new Date().toLocaleTimeString()}`;
+        $('dot').className = 'dot on';
+      } catch (e) {
+        $('dot').className = 'dot err';
+        $('msg').textContent = 'Could not reach Vantage';
+        parent.postMessage({ pluginMessage: { type: 'notify', text: 'KD Vantage is not running on that port' } }, '*');
+      }
+    }
+  };
+  $('send').onclick = () => parent.postMessage({ pluginMessage: { type: 'send' } }, '*');
+  $('live').onchange = (e) => parent.postMessage({ pluginMessage: { type: 'live', on: e.target.checked } }, '*');
+  $('unlink').onclick = () => parent.postMessage({ pluginMessage: { type: 'unlink' } }, '*');
+  parent.postMessage({ pluginMessage: { type: 'ready' } }, '*');
+</script>
